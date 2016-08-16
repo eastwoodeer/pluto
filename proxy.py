@@ -29,8 +29,6 @@ url: {}
 Accept-Encoding: {}
 '''.format(self.method, self.url, self.configs['Accept-Encoding'])
 
-    def 
-
 
 class Proxy:
     def server(self):
@@ -48,8 +46,18 @@ class Proxy:
             conn.sendall(d)
         conn.close()
 
-    def connect(self):
-        pass
+    def send(self, request):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        url = request.url
+        port = 80
+        if ';' in url:
+            port = url.split(':')[1]
+        s.connect((url.netloc, port))
+        msg = 'GET {} HTTP/1.1\r\nHost: {}\r\n\r\n'.format(url.path, url.netloc)
+        s.send(msg.encode('utf-8'))
+        data = s.recv
+        while len(data):
+            pass
         
 
 
