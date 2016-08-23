@@ -18,11 +18,14 @@ class HTTPRequest:
         self.request = request.decode('utf-8')
         contents = self.request.split('\r\n')
         self.method, url, self.proto = contents[0].split()
-        self.url = urlparse(url)
-        for config in contents[1:]:
-            if not config: continue
-            k, v = config.split(':', maxsplit=1)
-            self.configs[k] = v.strip()
+        if self.method == 'CONNECT':
+            self.url = url.split(':')[0]
+        else:
+            self.url = urlparse(url)
+        self.content = '\r\n'.join(contents[1:])
+
+    def __str__(self):
+        return self.request
 
 
 class Proxy:
@@ -31,22 +34,42 @@ class Proxy:
         message = data.decode()
         print(message)
         request = HTTPRequest(data)
-        await self.get_data(request, writer)
+        if request.method == 'CONNECT':
+            await self.connect_data(request, reader, writer)
+        else:
+            await self.get_data(request, writer)
 
-
-    async def get_data(self, request, writer):
-        url = request.url
-        # r, w = await asyncio.open_connection('10.74.120.140', 8000)
-        r, w = await asyncio.open_connection(url.hostname, 80)
-        msg = 'GET {} HTTP/1.1\r\nHost: {}\r\n\r\n'.format(url.path, url.netloc)
-        w.write(msg.encode('latin-1'))
+    async def connect_data(self, request, client_reader, client_writer):
+        reader, writer = await asyncio.open_connection(request.url, 443, ssl=True)
+        msg = 'HTTP/1.1 200 Connection Established\r\n\r\n'
+        print('===========================')
+        client_writer.write(msg.encode('latin-1'))
         while True:
-            data = await r.read(4096)
+            data = await client_reader.read()
             if not data:
+                client_writer.close()
                 writer.close()
-                w.close()
                 break
             writer.write(data)
+            while True:
+                data = await reader.read(4096)
+                if not data:
+                    break
+                client_writer.write(data)
+
+    async def get_data(self, request, client):
+        url = request.url
+        reader, writer = await asyncio.open_connection('10.74.120.140', 80)
+        # reader, writer = await asyncio.open_connection(url.netloc, 80)
+        msg = '{} {} HTTP/1.1\r\n{}'.format(request.method, url.path, request.content)
+        writer.write(msg.encode('latin-1'))
+        while True:
+            data = await reader.read(4096)
+            if not data:
+                client.close()
+                writer.close()
+                break
+            client.write(data)
 
 
 if __name__ == '__main__':
