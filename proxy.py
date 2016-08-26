@@ -13,13 +13,14 @@ PORT = 8765               # Arbitrary non-privileged port
 class HTTPRequest:
     charset = 'utf-8'
     configs = {}
+    port = 80
 
     def __init__(self, request):
-        self.request = request.decode('utf-8')
+        self.request = request.decode(self.charset)
         contents = self.request.split('\r\n')
         self.method, url, self.proto = contents[0].split()
         if self.method == 'CONNECT':
-            self.url = url.split(':')[0]
+            self.url, self.port = url.split(':')
         else:
             self.url = urlparse(url)
         self.content = '\r\n'.join(contents[1:])
@@ -31,7 +32,7 @@ class HTTPRequest:
 class Proxy:
     def __init__(self, loop):
         self.loop = loop
-
+    
     async def server(self, reader, writer):
         data = await reader.read(4096)
         message = data.decode()
@@ -40,10 +41,10 @@ class Proxy:
         if request.method == 'CONNECT':
             await self.connect_data(request, reader, writer)
         else:
-            await self.get_data(request, writer)
+            await self.get_data(request, writer)    
 
     async def connect_data(self, request, client_reader, client_writer):
-        reader, writer = await asyncio.open_connection(request.url, 443)
+        reader, writer = await asyncio.open_connection(request.url, request.port)
         msg = 'HTTP/1.1 200 Connection Established\r\n\r\n'
         client_writer.write(msg.encode())
         client = client_writer.get_extra_info('socket')
@@ -75,12 +76,11 @@ class Proxy:
             print('server read exception: {}'.format(e))
             self.loop.remove_reader(server)
 
-
     async def get_data(self, request, client):
         url = request.url
-        reader, writer = await asyncio.open_connection(url.netloc, 80)
+        reader, writer = await asyncio.open_connection(url.netloc, request.port)
         msg = '{} {} HTTP/1.1\r\n{}'.format(request.method, url.path, request.content)
-        writer.write(msg.encode('latin-1'))
+        writer.write(msg.encode())
         while True:
             data = await reader.read(4096)
             if not data:
@@ -97,8 +97,16 @@ class Proxy:
         client.write(data)
 
 
-    def run(self):
-        coro = asyncio.start_server(self.server, HOST, PORT, loop=self.loop)
+class Server:
+    def __init__(self, loop):
+        self.loop = loop
+
+    async def start(self, reader, writer):
+        proxy = Proxy(self.loop)
+        await proxy.server(reader, writer)
+
+    def run(self):        
+        coro = asyncio.start_server(self.start, HOST, PORT, loop=self.loop)
         server = self.loop.run_until_complete(coro)
         print('Serving on {}'.format(server.sockets[0].getsockname()))
         try:
@@ -112,5 +120,5 @@ class Proxy:
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    proxy = Proxy(loop)
-    proxy.run()
+    server = Server(loop)
+    server.run()
