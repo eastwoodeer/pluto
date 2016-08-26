@@ -10,7 +10,7 @@ HOST = ''                 # Symbolic name meaning all available interfaces
 PORT = 8765               # Arbitrary non-privileged port
 
 
-class HTTPRequest:
+class HTTPRequest(object):
     charset = 'utf-8'
     configs = {}
     port = 80
@@ -19,85 +19,128 @@ class HTTPRequest:
         self.request = request.decode(self.charset)
         contents = self.request.split('\r\n')
         self.method, url, self.proto = contents[0].split()
+        self.url = urlparse(url)
         if self.method == 'CONNECT':
-            self.url, self.port = url.split(':')
+            self.hostname, self.port = url.split(':')
         else:
-            self.url = urlparse(url)
+            if ':' in self.url.netloc:
+                self.hostname, self.port = self.url.netloc.split(':')
+            else:
+                self.hostname = self.url.netloc
         self.content = '\r\n'.join(contents[1:])
 
     def __str__(self):
         return self.request
 
 
-class Proxy:
+class Connection(object):
+    def __init__(self, reader, writer):
+        self.closed = False
+        self.reader = reader
+        self.writer = writer
+        self.socket = writer.get_extra_info('socket')
+
+    def recv(self, bytes=8192):
+        return self.socket.recv(bytes)
+
+    def send(self, data):
+        return self.socket.send(data)
+
+    async def read(self, bytes=8192):
+        return await self.reader.read(bytes)
+
+    def write(self, data):
+        self.writer.write(data)
+
+    def close(self):
+        self.writer.close()
+        self.closed = True
+
+
+class Client(Connection):
+    pass
+
+
+class Server(Connection):
+    pass
+
+
+class ProxyError(Exception):
+    pass
+
+
+class ProxyConnectionFailed(ProxyError):
+
+    def __init__(self, host, port, reason):
+        self.host = host
+        self.port = port
+        self.reason = reason
+
+    def __str__(self):
+        return 'ProxyConnectionFailed: %s:%s: %s' % (self.host, self.port, self.reason)
+    
+
+class Proxy(object):
     def __init__(self, loop):
         self.loop = loop
-    
+
+    async def connect(self, request):
+        try:
+            r, w = await asyncio.open_connection(request.hostname, request.port)
+            return Server(r, w)
+        except Exception as e:
+            raise ProxyConnectionFailed(request.hostname, request.port, repr(e))
+
     async def server(self, reader, writer):
-        data = await reader.read(4096)
-        message = data.decode()
+        self.client = Client(reader, writer)
+        data = await self.client.read(4096)
         request = HTTPRequest(data)
         print(request)
-        if request.method == 'CONNECT':
-            await self.connect_data(request, reader, writer)
-        else:
-            await self.get_data(request, writer)    
+        await self.process_request(request)
 
-    async def connect_data(self, request, client_reader, client_writer):
-        reader, writer = await asyncio.open_connection(request.url, request.port)
-        msg = 'HTTP/1.1 200 Connection Established\r\n\r\n'
-        client_writer.write(msg.encode())
-        client = client_writer.get_extra_info('socket')
-        server = writer.get_extra_info('socket')
-        self.loop.add_reader(client, self.client_read, server, client)
-        self.loop.add_reader(server, self.server_read, server, client)
-
-    def client_read(self, server, client):
+    async def process_request(self, request):
         try:
-            data = client.recv(4096)
+            self.server = await self.connect(request)
+        except ProxyConnectionFailed as e:
+            print(e)
+            self.client.close()
+            return
+        if request.method == 'CONNECT':
+            self.client.write('HTTP/1.1 200 Connection Established\r\n\r\n'.encode())
+        else:
+            msg = '{} {} HTTP/1.1\r\n{}'.format(request.method,
+                                                request.url.path,
+                                                request.content)
+            self.server.write(msg.encode())
+        self.loop.add_reader(self.client.socket, self.client_read)
+        self.loop.add_reader(self.server.socket, self.server_read)
+
+    def client_read(self):
+        try:
+            data = self.client.recv(4096)
             if not data:
-                print('remove client_read')
-                self.loop.remove_reader(client)
+                self.loop.remove_reader(self.client.socket)
                 return
-            server.send(data)
+            self.server.send(data)
         except Exception as e:
             print('client read exception: {}'.format(e))
-            self.loop.remove_reader(client)
+            self.loop.remove_reader(self.client.socket)
+            self.client.close()
 
-    def server_read(self, server, client):
+    def server_read(self):
         try:
-            data = server.recv(4096)
+            data = self.server.recv(4096)
             if not data:
-                print('remove server_read')
-                self.loop.remove_reader(server)
+                self.loop.remove_reader(self.server.socket)
                 return
-            client.send(data)
+            self.client.send(data)
         except Exception as e:
             print('server read exception: {}'.format(e))
-            self.loop.remove_reader(server)
-
-    async def get_data(self, request, client):
-        url = request.url
-        reader, writer = await asyncio.open_connection(url.netloc, request.port)
-        msg = '{} {} HTTP/1.1\r\n{}'.format(request.method, url.path, request.content)
-        writer.write(msg.encode())
-        while True:
-            data = await reader.read(4096)
-            if not data:
-                client.close()
-                writer.close()
-                break
-            client.write(data)
-
-    def read(self, server, client):
-        data = server.recv(4096)
-        if not data:
-            self.loop.remove_reader(server)
-            return
-        client.write(data)
+            self.loop.remove_reader(self.server.socket)
+            self.server.close()
 
 
-class Server:
+class Pluto(object):
     def __init__(self, loop):
         self.loop = loop
 
@@ -105,7 +148,7 @@ class Server:
         proxy = Proxy(self.loop)
         await proxy.server(reader, writer)
 
-    def run(self):        
+    def run(self):
         coro = asyncio.start_server(self.start, HOST, PORT, loop=self.loop)
         server = self.loop.run_until_complete(coro)
         print('Serving on {}'.format(server.sockets[0].getsockname()))
@@ -120,5 +163,5 @@ class Server:
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    server = Server(loop)
+    server = Pluto(loop)
     server.run()
