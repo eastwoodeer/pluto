@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 HOST = ''                 # Symbolic name meaning all available interfaces
 PORT = 8765               # Arbitrary non-privileged port
-
+CRLF = '\r\n'
 
 class HTTPRequest(object):
     charset = 'utf-8'
@@ -17,7 +17,7 @@ class HTTPRequest(object):
 
     def __init__(self, request):
         self.request = request.decode(self.charset)
-        contents = self.request.split('\r\n')
+        contents = self.request.split(CRLF)
         self.method, url, self.proto = contents[0].split()
         self.url = urlparse(url)
         if self.method == 'CONNECT':
@@ -27,7 +27,7 @@ class HTTPRequest(object):
                 self.hostname, self.port = self.url.netloc.split(':')
             else:
                 self.hostname = self.url.netloc
-        self.content = '\r\n'.join(contents[1:])
+        self.content = CRLF.join(contents[1:])
 
     def __str__(self):
         return self.request
@@ -58,11 +58,13 @@ class Connection(object):
 
 
 class Client(Connection):
-    pass
+    def __str__(self):
+        return 'Client closed: {}'.format(self.closed)
 
 
 class Server(Connection):
-    pass
+    def __str__(self):
+        return 'Server closed: {}'.format(self.closed)
 
 
 class ProxyError(Exception):
@@ -83,6 +85,7 @@ class ProxyConnectionFailed(ProxyError):
 class Proxy(object):
     def __init__(self, loop):
         self.loop = loop
+        # self.server = None
 
     async def connect(self, request):
         try:
@@ -93,7 +96,10 @@ class Proxy(object):
 
     async def server(self, reader, writer):
         self.client = Client(reader, writer)
-        data = await self.client.read(4096)
+        data = await self.client.read()
+        if not data:
+            self.client.close()
+            return
         request = HTTPRequest(data)
         print(request)
         await self.process_request(request)
