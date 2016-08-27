@@ -78,7 +78,7 @@ class ProxyConnectionFailed(ProxyError):
 
     def __str__(self):
         return 'ProxyConnectionFailed: %s:%s: %s' % (self.host, self.port, self.reason)
-    
+
 
 class Proxy(object):
     def __init__(self, loop):
@@ -117,11 +117,11 @@ class Proxy(object):
 
     def client_read(self):
         try:
-            data = self.client.recv(4096)
+            data = self.client.recv()
             if not data:
                 self.loop.remove_reader(self.client.socket)
                 return
-            self.server.send(data)
+            self.server.write(data)
         except Exception as e:
             print('client read exception: {}'.format(e))
             self.loop.remove_reader(self.client.socket)
@@ -129,11 +129,11 @@ class Proxy(object):
 
     def server_read(self):
         try:
-            data = self.server.recv(4096)
+            data = self.server.recv()
             if not data:
                 self.loop.remove_reader(self.server.socket)
                 return
-            self.client.send(data)
+            self.client.write(data)
         except Exception as e:
             print('server read exception: {}'.format(e))
             self.loop.remove_reader(self.server.socket)
