@@ -114,8 +114,12 @@ class Proxy(object):
         if request.method == 'CONNECT':
             self.client.write('HTTP/1.1 200 Connection Established\r\n\r\n'.encode())
         else:
+            if request.url.query:
+                path = '?'.join([request.url.path, request.url.query])
+            else:
+                path = request.url.path
             msg = '{} {} HTTP/1.1\r\n{}'.format(request.method,
-                                                request.url.path,
+                                                path,
                                                 request.content)
             self.server.write(msg.encode())
         self.loop.add_reader(self.client.socket, self.client_read)
