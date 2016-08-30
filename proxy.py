@@ -13,6 +13,7 @@ CRLF, COLON, SPACE = '\r\n', ':', ' '
 class HTTPRequest(object):
     charset = 'utf-8'
     headers = {}
+    body = None
     port = 80
 
     def __init__(self, request):
@@ -35,8 +36,11 @@ class HTTPRequest(object):
 
     def parse_request_headers(self, contents):
         self.content = CRLF.join(contents)
-        for line in contents:
-            if not line: continue
+        for index, line in enumerate(contents):
+            if not line:
+                if contents[index+1]:
+                    self.body = CRLF.join(contents[index+1:])
+                break
             parts = line.split(COLON, maxsplit=1)
             name = parts[0].strip()
             value = parts[1].strip()
@@ -66,6 +70,8 @@ class HTTPRequest(object):
             name, value = header
             req += self.build_header(name, value)
         req += CRLF
+        if self.body:
+            req += self.body
         return req.encode()
 
     def del_headers(self, *names):
@@ -183,8 +189,9 @@ class Proxy(object):
             self.client.queue(self.https_connection_established)
         else:
             self.server.queue(request.build(
-                delete_headers=['proxy-connection', 'connection'],
-                add_headers=[('Connection', 'Close')]))
+                # delete_headers=['proxy-connection', 'connection'],
+                # add_headers=[('Connection', 'Close')]
+            ))
         self.loop.add_reader(self.client.socket, self.read, self.client, self.server)
         self.loop.add_reader(self.server.socket, self.read, self.server, self.client)
         self.loop.add_writer(self.client.socket, self.write, self.client)
