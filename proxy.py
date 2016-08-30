@@ -12,13 +12,18 @@ CRLF, COLON, SPACE = '\r\n', ':', ' '
 
 class HTTPRequest(object):
     charset = 'utf-8'
-    configs = {}
+    headers = {}
     port = 80
 
     def __init__(self, request):
         self.request = request.decode(self.charset)
         contents = self.request.split(CRLF)
-        self.method, url, self.proto = contents[0].split()
+        request, headers = contents[0], contents[1:]
+        self.parse_request_info(request)
+        self.parse_request_headers(headers)
+
+    def parse_request_info(self, request):
+        self.method, url, self.version = request.split()
         self.url = urlparse(url)
         if self.method == 'CONNECT':
             self.hostname, self.port = url.split(COLON)
@@ -27,33 +32,52 @@ class HTTPRequest(object):
                 self.hostname, self.port = self.url.netloc.split(COLON)
             else:
                 self.hostname = self.url.netloc
-        self.parse_headers(contents[1:])
-        self.del_headers('proxy-connection')
-        self.add_header('Connection', 'Close')
 
-    def parse_headers(self, contents):
+    def parse_request_headers(self, contents):
         self.content = CRLF.join(contents)
         for line in contents:
             if not line: continue
-            name, value = line.split(COLON, maxsplit=1)
-            self.configs[name.strip().lower()] = value.strip()
+            parts = line.split(COLON, maxsplit=1)
+            name = parts[0].strip()
+            value = parts[1].strip()
+            self.headers[name.lower()] = (name, value)
 
-    def build_headers(self, configs):
-        headers = []
-        for name in configs.keys():
-            headers.append('{}: {}\r\n'.format(name, configs[name]))
-        self.content = CRLF.join(headers)
+    def build_header(self, k, v):
+        return '{}: {}\r\n'.format(k, v)
+
+    def build_url(self):
+        url = self.url.path
+        if url == '':
+            url = '/'
+        if self.url.query:
+            url += '?{}'.format(self.url.query)
+        if self.url.fragment:
+            url += '#{}'.format(self.url.fragment)
+        return url
+
+    def build(self, delete_headers=[], add_headers=[]):
+        req = ' '.join([self.method, self.build_url(), self.version])
+        req += CRLF
+        for k in self.headers:
+            if k not in delete_headers:
+                name, value = self.headers[k]
+                req += self.build_header(name, value)
+        for header in add_headers:
+            name, value = header
+            req += self.build_header(name, value)
+        req += CRLF
+        return req.encode()
 
     def del_headers(self, *names):
         for name in names:
-            del self.configs[name]
-        self.build_headers(self.configs)
+            del self.headers[name]
+        self.build(self.headers)
         print(self.content)
 
     def add_header(self, name, value):
-        if name not in self.configs:
-            self.configs[name] = value
-        self.build_headers(self.configs)
+        if name not in self.headers:
+            self.headers[name] = value
+        self.build(self.headers)
 
     def __str__(self):
         return self.request
@@ -144,10 +168,8 @@ class Proxy(object):
             self.client.close()
             return
         request = HTTPRequest(data)
+        log.info('{} {}'.format(request.method, request.build_url()))
         log.debug(request)
-        log.info('{} {} {}'.format(request.method,
-                                   request.hostname,
-                                   request.url.path))
         await self.process_request(request)
 
     async def process_request(self, request):
@@ -160,14 +182,9 @@ class Proxy(object):
         if request.method == 'CONNECT':
             self.client.queue(self.https_connection_established)
         else:
-            if request.url.query:
-                path = '?'.join([request.url.path, request.url.query])
-            else:
-                path = request.url.path
-            msg = '{} {} HTTP/1.1\r\n{}'.format(request.method,
-                                                path,
-                                                request.content)
-            self.server.queue(msg.encode())
+            self.server.queue(request.build(
+                delete_headers=['proxy-connection', 'connection'],
+                add_headers=[('Connection', 'Close')]))
         self.loop.add_reader(self.client.socket, self.read, self.client, self.server)
         self.loop.add_reader(self.server.socket, self.read, self.server, self.client)
         self.loop.add_writer(self.client.socket, self.write, self.client)
@@ -229,7 +246,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log_level),
-                        format='%(asctime)s - %(levelname)s - pid:%(process)d - %(message)s')
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     hostname = args.hostname
     port = int(args.port)
 
