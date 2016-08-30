@@ -128,7 +128,7 @@ class Proxy(object):
         try:
             self.server = await self.connect(request)
         except ProxyConnectionFailed as e:
-            log.exception(e)
+            log.debug(e)
             self.client.close()
             return
         if request.method == 'CONNECT':
@@ -195,7 +195,7 @@ class Pluto(object):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='proxy.py')
+    parser = argparse.ArgumentParser(description='proxy.py: coding for fun')
     parser.add_argument('--hostname', default='127.0.0.1', help='Default: 127.0.0.1')
     parser.add_argument('--port', default='8765', help='Default: 8765')
     parser.add_argument('--log-level', default='INFO',
