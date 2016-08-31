@@ -74,17 +74,6 @@ class HTTPRequest(object):
             req += self.body
         return req.encode()
 
-    def del_headers(self, *names):
-        for name in names:
-            del self.headers[name]
-        self.build(self.headers)
-        print(self.content)
-
-    def add_header(self, name, value):
-        if name not in self.headers:
-            self.headers[name] = value
-        self.build(self.headers)
-
     def __str__(self):
         return self.request
 
