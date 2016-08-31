@@ -111,7 +111,7 @@ class Proxy(object):
         except Exception as e:
             raise ProxyConnectionFailed(request.hostname, request.port, repr(e))
 
-    async def server(self, reader, writer):
+    async def start_server(self, reader, writer):
         self.client = Client(reader, writer)
         data = await self.client.read()
         if not data:
@@ -178,7 +178,7 @@ class Pluto(object):
 
     async def start(self, reader, writer):
         proxy = Proxy(self.loop)
-        await proxy.server(reader, writer)
+        await proxy.start_server(reader, writer)
 
     def run(self):
         coro = asyncio.start_server(self.start, self.hostname,
