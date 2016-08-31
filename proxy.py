@@ -27,33 +27,7 @@ class HTTPRequest(object):
                 self.hostname, self.port = self.url.netloc.split(COLON)
             else:
                 self.hostname = self.url.netloc
-        self.parse_headers(contents[1:])
-        self.del_headers('proxy-connection')
-        self.add_header('Connection', 'Close')
-
-    def parse_headers(self, contents):
-        self.content = CRLF.join(contents)
-        for line in contents:
-            if not line: continue
-            name, value = line.split(COLON, maxsplit=1)
-            self.configs[name.strip().lower()] = value.strip()
-
-    def build_headers(self, configs):
-        headers = []
-        for name in configs.keys():
-            headers.append('{}: {}\r\n'.format(name, configs[name]))
-        self.content = CRLF.join(headers)
-
-    def del_headers(self, *names):
-        for name in names:
-            del self.configs[name]
-        self.build_headers(self.configs)
-        print(self.content)
-
-    def add_header(self, name, value):
-        if name not in self.configs:
-            self.configs[name] = value
-        self.build_headers(self.configs)
+        self.content = CRLF.join(contents[1:])
 
     def __str__(self):
         return self.request
