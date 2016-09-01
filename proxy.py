@@ -143,7 +143,7 @@ class ProxyConnectionFailed(ProxyError):
 class Proxy(object):
     def __init__(self, loop):
         self.loop = loop
-        # self.server = None
+        self.server = None
         self.https_connection_established = CRLF.join([
             'HTTP/1.1 200 Connection Established',
             'Proxy-agent: proxy.py',
@@ -192,7 +192,6 @@ class Proxy(object):
         except Exception as e:
             log.debug('{} write exception: {}'.format(writer, e))
             self.loop.remove_writer(writer.socket)
-            # TODO: need to close this?
             writer.close()
 
     def read(self, reader, writer):
