@@ -9,19 +9,19 @@
 
 由于使用了asyncio以及async和await关键字, 因此需要使用Python3.5及以上版本进行运行.
 
-    usage: proxy.py [-h] [--hostname HOSTNAME] [--port PORT]
+    usage: proxy.py [-h] [--host HOST] [--port PORT]
                     [--log-level LOG_LEVEL]
 
     proxy.py
 
     optional arguments:
       -h, --help            show this help message and exit
-      --hostname HOSTNAME   Default: 127.0.0.1
+      --host HOST   Default: 127.0.0.1
       --port PORT           Default: 8765
       --log-level LOG_LEVEL
                             DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-    e.g: python3 proxy.py --hostname 10.74.120.141 --port 8888 --log-level INFO
+    e.g: python3 proxy.py --host 10.74.120.141 --port 8888 --log-level INFO
 
 # 原理
 

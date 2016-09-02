@@ -27,12 +27,12 @@ class HTTPRequest(object):
         self.method, url, self.version = request.split()
         self.url = urlparse(url)
         if self.method == 'CONNECT':
-            self.hostname, self.port = url.split(COLON)
+            self.host, self.port = url.split(COLON)
         else:
             if COLON in self.url.netloc:
-                self.hostname, self.port = self.url.netloc.split(COLON)
+                self.host, self.port = self.url.netloc.split(COLON)
             else:
-                self.hostname = self.url.netloc
+                self.host = self.url.netloc
 
     def parse_request_headers(self, contents):
         self.content = CRLF.join(contents)
@@ -151,10 +151,10 @@ class Proxy(object):
 
     async def connect(self, request):
         try:
-            r, w = await asyncio.open_connection(request.hostname, request.port)
+            r, w = await asyncio.open_connection(request.host, request.port)
             return Server(r, w)
         except Exception as e:
-            raise ProxyConnectionFailed(request.hostname, request.port, repr(e))
+            raise ProxyConnectionFailed(request.host, request.port, repr(e))
 
     async def start_server(self, reader, writer):
         self.client = Client(reader, writer)
@@ -163,7 +163,7 @@ class Proxy(object):
             self.client.close()
             return
         request = HTTPRequest(data)
-        log.info('{} {}'.format(request.method, request.build_url()))
+        log.info('{} {} {}'.format(request.method, request.host, request.build_url()))
         log.debug(request)
         await self.process_request(request)
 
@@ -209,9 +209,9 @@ class Proxy(object):
 
 
 class Pluto(object):
-    def __init__(self, loop, hostname, port):
+    def __init__(self, loop, host, port):
         self.loop = loop
-        self.hostname = hostname
+        self.host = host
         self.port = port
 
     async def start(self, reader, writer):
@@ -219,7 +219,7 @@ class Pluto(object):
         await proxy.start_server(reader, writer)
 
     def run(self):
-        coro = asyncio.start_server(self.start, self.hostname,
+        coro = asyncio.start_server(self.start, self.host,
                                     self.port, loop=self.loop)
         server = self.loop.run_until_complete(coro)
         log.info('Serving on {}'.format(server.sockets[0].getsockname()))
@@ -234,7 +234,7 @@ class Pluto(object):
 
 def main():
     parser = argparse.ArgumentParser(description='proxy.py: coding for fun')
-    parser.add_argument('--hostname', default='127.0.0.1', help='Default: 127.0.0.1')
+    parser.add_argument('--host', default='127.0.0.1', help='Default: 127.0.0.1')
     parser.add_argument('--port', default='8765', help='Default: 8765')
     parser.add_argument('--log-level', default='INFO',
                         help='DEBUG, INFO, WARNING, ERROR, CRITICAL')
@@ -242,11 +242,11 @@ def main():
 
     logging.basicConfig(level=getattr(logging, args.log_level),
                         format='%(asctime)s - %(levelname)s - %(message)s')
-    hostname = args.hostname
+    host = args.host
     port = int(args.port)
 
     loop = asyncio.get_event_loop()
-    server = Pluto(loop, hostname, port)
+    server = Pluto(loop, host, port)
     server.run()
 
 
