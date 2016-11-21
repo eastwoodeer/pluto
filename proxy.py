@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 CRLF, COLON, SPACE = '\r\n', ':', ' '
 
 class HTTPRequest(object):
-    charset = 'utf-8'
+    charset = 'latin'
 
     def __init__(self, request):
         self.body = None
