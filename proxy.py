@@ -10,8 +10,33 @@ log = logging.getLogger(__name__)
 
 CRLF, COLON, SPACE = '\r\n', ':', ' '
 
+
+class ProxyError(Exception):
+    pass
+
+
+class ProxyConnectionFailed(ProxyError):
+    def __init__(self, host, port, reason):
+        self.host = host
+        self.port = port
+        self.reason = reason
+
+    def __str__(self):
+        return 'ProxyConnectionFailed: {}:{}: {}'.format(self.host, self.port, self.reason)
+
+
+class ProxyRequestParseError(ProxyError):
+    def __init__(self, request, reason):
+        self.request = request
+        self.reason = reason
+
+    def __str__(self):
+        return 'ProxyRequestParseError: parse {} error: {}'.format(self.request, self.reason)
+
+
 class HTTPRequest(object):
     charset = 'latin'
+    version = 'HTTP/1.0'
 
     def __init__(self, request):
         self.body = None
@@ -24,7 +49,12 @@ class HTTPRequest(object):
         self.parse_request_headers(headers)
 
     def parse_request_info(self, request):
-        self.method, url, self.version = request.split()
+        components = request.split()
+        if len(components) < 2 or len(components) > 3:
+            raise ProxyRequestParseError(request, "request should contain method and url at least.")
+        self.method, url = components[0], components[1]
+        if len(components) == 3:
+            self.version = components[2]
         self.url = urlparse(url)
         if self.method == 'CONNECT':
             self.host, self.port = url.split(COLON)
@@ -124,20 +154,6 @@ class Client(Connection):
 class Server(Connection):
     def __str__(self):
         return 'Server'
-
-
-class ProxyError(Exception):
-    pass
-
-
-class ProxyConnectionFailed(ProxyError):
-    def __init__(self, host, port, reason):
-        self.host = host
-        self.port = port
-        self.reason = reason
-
-    def __str__(self):
-        return 'ProxyConnectionFailed: %s:%s: %s' % (self.host, self.port, self.reason)
 
 
 class Proxy(object):
